@@ -38,4 +38,8 @@ class Dataset:
         print("Unsupported Operation")
         raise(Exception("Unsupported Operation"))
 
+    def full_train_batch(self):
+        self.handle_unsupported_op()
 
+    def full_test_batch(self):
+        self.handle_unsupported_op()

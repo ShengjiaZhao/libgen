@@ -2,7 +2,7 @@ from libgen.architecture import *
 
 
 class VAE:
-    def __init__(self, dataset, log_path):
+    def __init__(self, dataset, log_path, binary=False):
         self.dataset = dataset
         self.log_path = log_path
 
@@ -28,7 +28,12 @@ class VAE:
         self.gen_x = generator(self.gen_z, reuse=True)
 
         # Negative log likelihood per dimension
-        nll_per_sample = tf.reduce_sum(tf.square(self.train_x - train_xr) + 0.5 * tf.abs(self.train_x - train_xr), axis=(1, 2, 3))
+        if binary:
+            nll_per_sample = -tf.reduce_sum(tf.log(train_xr) * self.train_x + tf.log(1 - train_xr) * (1 - self.train_x),
+                                                 axis=(1, 2, 3))
+        else:
+            nll_per_sample = tf.reduce_sum(tf.square(self.train_x - train_xr) + 0.5 * tf.abs(self.train_x - train_xr), axis=(1, 2, 3))
+
         loss_nll = tf.reduce_mean(nll_per_sample)
 
         self.kl_anneal = tf.placeholder(tf.float32)
@@ -66,7 +71,7 @@ class VAE:
         if self.idx % 2000 == 0:
             summary_val = self.sess.run(self.sample_summary,
                                         feed_dict={self.train_x: bx[:64],
-                                                   self.gen_z: np.random.normal(size=(batch_size, self.z_dim))})
+                                                   self.gen_z: np.random.normal(size=(64, self.z_dim))})
             self.summary_writer.add_summary(summary_val, self.idx)
 
         self.idx += 1
