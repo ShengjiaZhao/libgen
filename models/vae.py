@@ -2,7 +2,7 @@ from libgen.architecture import *
 
 
 class VAE:
-    def __init__(self, dataset, log_path, binary=False):
+    def __init__(self, dataset, log_path, binary=False, anneal=True):
         self.dataset = dataset
         self.log_path = log_path
 
@@ -21,23 +21,28 @@ class VAE:
         zkl_per_sample = tf.reduce_sum(-tf.log(train_zdist[1]) + 0.5 * tf.square(train_zdist[1]) +
                                        0.5 * tf.square(train_zdist[0]) - 0.5, axis=1)
         loss_zkl = tf.reduce_mean(zkl_per_sample)
-        train_xr = generator(train_zsample)
+
+        # Negative log likelihood per dimension
+        if binary:
+            train_xr = generator(train_zsample, activation=tf.identity)
+            nll_per_sample = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(logits=train_xr, labels=self.train_x), axis=(1, 2, 3))
+            train_xr = tf.sigmoid(train_xr)
+        else:
+            train_xr = generator(train_zsample)
+            nll_per_sample = tf.reduce_sum(tf.square(self.train_x - train_xr) + 0.5 * tf.abs(self.train_x - train_xr),
+                                           axis=(1, 2, 3))
 
         # Build the computation graph for generating samples
         self.gen_z = tf.placeholder(tf.float32, shape=[None, self.z_dim])
         self.gen_x = generator(self.gen_z, reuse=True)
 
-        # Negative log likelihood per dimension
-        if binary:
-            nll_per_sample = -tf.reduce_sum(tf.log(train_xr) * self.train_x + tf.log(1 - train_xr) * (1 - self.train_x),
-                                                 axis=(1, 2, 3))
-        else:
-            nll_per_sample = tf.reduce_sum(tf.square(self.train_x - train_xr) + 0.5 * tf.abs(self.train_x - train_xr), axis=(1, 2, 3))
-
         loss_nll = tf.reduce_mean(nll_per_sample)
 
         self.kl_anneal = tf.placeholder(tf.float32)
-        loss_elbo = loss_nll + loss_zkl * self.kl_anneal
+        if anneal:
+            loss_elbo = loss_nll + loss_zkl * self.kl_anneal
+        else:
+            loss_elbo = loss_nll + loss_zkl
         self.trainer = tf.train.AdamOptimizer(1e-4, beta1=0.5, beta2=0.9).minimize(loss_elbo)
 
         self.train_summary = tf.summary.merge([
